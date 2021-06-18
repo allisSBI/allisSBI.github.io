@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en"> <head> <meta charset="UTF-8">
+<title>CSV=>JSON</title>
+<body>
+	<div style="margin-bottom: 20px; font-weight: bold">Choose all files, then press Profiles and Requests.</div>
+
+	<div style="margin-bottom: 5px">Randomized Requests CSV</div>
+	<input type="file" id="Randomized Requests" style="margin-bottom: 20px" />
+
+	<div style="margin-bottom: 5px">Bespoke Requests CSV</div>
+	<input type="file" id="Bespoke Requests" style="margin-bottom: 20px" />
+
+	<div style="margin-bottom: 5px">Profiles CSV</div>
+	<input type="file" id="Profiles" style="margin-bottom: 20px" />
+
+	<button id="Convert" style="display: block; background-color: green; color: white; padding: 5px">Profiles</button>
+
+	<button id="Append" style="display: block; background-color: green; color: white; padding: 5px">Requests</button>
+
+<script>
+
+var requests_en1 = ""
+var requests_en2 = ""
+var requests1 = ""
+var requests2 = ""
+
+window.onload = ()=>{
+
+	function download(filename, text) {
+    		var element = document.createElement('a');
+    		element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+    		element.setAttribute('download', filename);
+    		element.style.display = 'none';
+    		document.body.appendChild(element);
+    		element.click();
+    		document.body.removeChild(element);
+	}	
+
+	// from https://stackoverflow.com/questions/1293147/example-javascript-code-to-parse-csv-data
+	function CSVToArray( strData, strDelimiter ){
+		strDelimiter = (strDelimiter || ",");
+		var objPattern = new RegExp((
+			"(\\" + strDelimiter + "|\\r?\\n|\\r|^)" +
+			"(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|" +
+			"([^\"\\" + strDelimiter + "\\r\\n]*))"
+			),
+			"gi"
+		);
+		var arrData = [[]];
+		var arrMatches = null;
+		while (arrMatches = objPattern.exec( strData )) {
+			var strMatchedDelimiter = arrMatches[ 1 ];
+			if (strMatchedDelimiter.length && strMatchedDelimiter !== strDelimiter) {
+				arrData.push( [] );
+			}
+			var strMatchedValue;
+			if (arrMatches[ 2 ]) {
+				strMatchedValue = arrMatches[ 2 ].replace(new RegExp( "\"\"", "g" ), "\"");
+			} else {
+				strMatchedValue = arrMatches[ 3 ];
+			}
+			arrData[ arrData.length - 1 ].push( strMatchedValue );
+		}
+		return( arrData );
+	}
+
+	function removeNA(stat) {
+		return stat == "N/A" ? "" : stat
+	}
+
+	function CSVToFile(resultFn, inputId, objectFn, stringFn) {
+		const element = document.getElementById(inputId)
+		const file = element.files[0]
+		const reader = new FileReader()
+		reader.onload = function(element) {
+			var csv = element.target.result
+			const lines = CSVToArray(csv)
+			// remove title row and last row which is empty for some reason
+			lines.shift()
+
+			const objects = lines.map(objectFn)
+			const text = stringFn(objects)
+			resultFn(text)
+		}
+		reader.readAsText(file)
+	}
+
+	function pushStat(a, field) {
+		const s = removeNA(field)
+		if (s.length) a.push(s)
+	}
+
+
+
+	function makeRandomizedRequest(line) {
+
+		const stats = []
+		pushStat(stats, line[2])
+		pushStat(stats, line[3])
+
+		const o = {
+			request: line[0]
+		}
+
+		const job = removeNA(line[4])
+
+		if (job.length) {
+			o.job=job
+		}
+
+		if (stats.length) {
+			o.stats=stats
+		}
+
+		return o
+	}
+
+	function makeRandomizedRequestEN(line) {
+		function removePlural(s) {
+			return s.replace("[JOB PLURAL]","{Random Jobs}")
+		}
+
+		function makeText(s) {
+			if (s.includes("Random")) {
+				return "{"+s+"}"
+			}
+			else {
+				return s.toUpperCase()
+			}
+		}
+
+		return {
+			request: line[0],
+			text: removePlural(line[1]).replaceAll("[JOB]", makeText(line[4])).replaceAll("[STAT 1]", makeText(line[2])).replaceAll("[STAT 2]", makeText(line[3]))
+		}
+	}
+
+		function makeBespokeRequest(line) {
+		const stats = []
+		pushStat(stats, removeNA(line[3]))
+
+		const o = {
+			request: line[0]
+		}
+			
+		const job = removeNA(line[2])
+
+		if (job.length) {
+			o.job=job
+		}
+
+		if (stats.length) {
+			o.stats=stats
+		}
+		
+		return o
+	}
+
+	function makeBespokeRequestEN(line) {
+		function makeText(s) {
+			return s.toUpperCase()
+		}
+
+		return {
+			request: line[0],
+			text: line[1].replaceAll("[JOB]", makeText(line[2])).replaceAll("[STAT]", makeText(line[3]))
+		}
+	}
+
+	function makeProfile(line) {
+		let filename = ""
+		if (line[14] == "Completed") {
+			const name = line[1].replaceAll(".", "")
+				.replaceAll("'", "")
+				.replaceAll("?", "")
+				.replaceAll(" ", "_")
+				.toLowerCase()
+			filename = "portrait-" + name
+		}
+
+		let profile = {	
+			name: line[1],
+			job: line[2],
+			speed: parseInt(line[4]),
+			reliability: parseInt(line[5]),
+			quality: parseInt(line[6]),
+			charisma: parseInt(line[7]),
+			expense: parseInt(line[8])
+		}
+		if (filename) {
+			profile.portrait = filename
+		}
+		return profile
+		
+	}
+
+	function makeProfileEN(line) {
+		return {
+			localizationNote: line[16],
+			name: line[1]
+ 		}
+	}
+
+	function toJSON(objects) {
+		return JSON.stringify(objects, null, 2)
+	}
+
+	function toRequestText(objects) {
+		return objects.map(o=> "\"" + o.request + "\" = \"" + o.text + "\"").join("\r\n")
+	}
+
+	function toProfileText(objects) {
+		return objects.map(o=> "-- " + o.localizationNote + "\r\n\"" + o.name + "\" = \"" + o.name + "\"\r\n").join("\r\n")
+	}
+
+	function convertAll() {
+		CSVToFile(s=>requests2=s, "Randomized Requests", makeRandomizedRequest, toJSON)
+		CSVToFile(s=>requests_en2=s, "Randomized Requests", makeRandomizedRequestEN, toRequestText)
+		CSVToFile(s=>requests1=s, "Bespoke Requests", makeBespokeRequest, toJSON)
+		CSVToFile(s=>requests_en1=s, "Bespoke Requests", makeBespokeRequestEN, toRequestText)
+		CSVToFile(s=>download("profiles.json",s), "Profiles", makeProfile, toJSON)
+		CSVToFile(s=>download("profiles-en.strings",s), "Profiles", makeProfileEN, toProfileText)
+	}
+
+	function appendAll () {
+		if (requests1.length == 0 || requests2.length == 0 || requests_en1.length == 0 || requests_en2.length == 0) {
+			alert("Files aren't ready yet.")
+		}
+		else {
+			download("requests.json", requests1.slice(0,-1)+","+requests2.slice(1)) 
+			download("requests-en.strings", requests_en1+"\n"+requests_en2)
+		}
+	}
+
+	document.getElementById("Convert").onclick = convertAll
+	document.getElementById("Append").onclick = appendAll 
+}
+</script>
+</body>
+</html>
+
